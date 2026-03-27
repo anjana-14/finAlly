@@ -1,10 +1,15 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "env": {
-    "OLLAMA_BASE_URL": "@ollama_base_url",
-    "OLLAMA_API_KEY": "@ollama_api_key"
-  },
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
   "headers": [
     {
       "source": "/api/:path*",

@@ -4,9 +4,14 @@
  */
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Lightweight health check to verify function deployment.
+  if (req.method === 'GET') {
+    return res.status(200).json({ ok: true, service: 'ollama-proxy' })
+  }
+
+  // Only allow POST requests for inference.
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return res.status(405).json({ error: 'Method not allowed. Use POST.' })
   }
 
   const apiKey = process.env.OLLAMA_API_KEY
@@ -14,8 +19,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfigured: missing OLLAMA_API_KEY' })
   }
 
-  const baseUrl = process.env.OLLAMA_BASE_URL || 'https://api.ollama.com'
-  const { endpoint, messages, model, temperature } = req.body
+  const baseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.com'
+  const parsedBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+  const { endpoint, messages, model, temperature } = parsedBody
 
   if (!endpoint || !messages || !model) {
     return res.status(400).json({ error: 'Missing required fields: endpoint, messages, model' })

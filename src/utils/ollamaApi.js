@@ -1,5 +1,7 @@
 const ollamaModel = import.meta.env.VITE_OLLAMA_MODEL || 'gemma3:4b'
 const isProduction = import.meta.env.MODE === 'production'
+const apiKey = import.meta.env.VITE_OLLAMA_API_KEY || ''
+const baseUrl = (import.meta.env.VITE_OLLAMA_BASE_URL || '/ollama-api').replace(/\/$/, '')
 console.log('[Ollama] Production mode:', isProduction, 'Model:', ollamaModel)
 
 const SYSTEM_PROMPT = `You are "Ally", a warm, encouraging, women-centric financial educator and advisor based in India. 
@@ -50,34 +52,39 @@ function setToCache(key, data) {
 }
 
 async function generateContent(prompt) {
-  console.log('[Ollama] Calling chat completions proxy, prompt length:', prompt.length)
+  console.log('[Ollama] Calling chat completions, prompt length:', prompt.length)
 
-  // In production (Vercel), call serverless function
-  // In dev, still try proxy (from vite.config.js)
-  const endpoint = isProduction ? '/api/ollama' : '/ollama-api/v1/chat/completions'
+  if (!isProduction && !apiKey) {
+    throw new Error('Missing VITE_OLLAMA_API_KEY in .env for local development')
+  }
+
+  // In production (Vercel): call serverless function which adds key server-side.
+  // In development: call Vite proxy → ollama.com with key in header.
+  const endpoint = isProduction ? '/api/ollama' : `${baseUrl}/v1/chat/completions`
+
+  const headers = { 'Content-Type': 'application/json' }
+  if (!isProduction && apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+
+  const body = isProduction
+    ? {
+        endpoint: '/v1/chat/completions',
+        messages: [{ role: 'user', content: prompt }],
+        model: ollamaModel,
+        temperature: 0.7,
+      }
+    : {
+        model: ollamaModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+      }
 
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(
-        isProduction
-          ? {
-              // Vercel function expects this format
-              endpoint: '/v1/chat/completions',
-              messages: [{ role: 'user', content: prompt }],
-              model: ollamaModel,
-              temperature: 0.7,
-            }
-          : {
-              // Direct API call (dev with Vite proxy)
-              model: ollamaModel,
-              messages: [{ role: 'user', content: prompt }],
-              temperature: 0.7,
-            }
-      ),
+      headers,
+      body: JSON.stringify(body),
     })
 
     if (!response.ok) {

@@ -1,7 +1,6 @@
-const apiKey = import.meta.env.VITE_OLLAMA_API_KEY || ''
-const ollamaBaseUrl = (import.meta.env.VITE_OLLAMA_BASE_URL || 'https://api.ollama.com').replace(/\/$/, '')
-const ollamaModel = import.meta.env.VITE_OLLAMA_MODEL || 'qwen2.5:7b'
-console.log('[Ollama] API key loaded:', apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)} (length: ${apiKey.length})` : 'MISSING')
+const ollamaModel = import.meta.env.VITE_OLLAMA_MODEL || 'gemma3:4b'
+const isProduction = import.meta.env.MODE === 'production'
+console.log('[Ollama] Production mode:', isProduction, 'Model:', ollamaModel)
 
 const SYSTEM_PROMPT = `You are "Ally", a warm, encouraging, women-centric financial educator and advisor based in India. 
 Your audience is Indian women — from students to retirees. 
@@ -51,40 +50,53 @@ function setToCache(key, data) {
 }
 
 async function generateContent(prompt) {
-  console.log('[Ollama] Calling chat completions, prompt length:', prompt.length)
+  console.log('[Ollama] Calling chat completions proxy, prompt length:', prompt.length)
 
-  if (!apiKey) {
-    throw new Error('Missing VITE_OLLAMA_API_KEY')
+  // In production (Vercel), call serverless function
+  // In dev, still try proxy (from vite.config.js)
+  const endpoint = isProduction ? '/api/ollama' : '/ollama-api/v1/chat/completions'
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(
+        isProduction
+          ? {
+              // Vercel function expects this format
+              endpoint: '/v1/chat/completions',
+              messages: [{ role: 'user', content: prompt }],
+              model: ollamaModel,
+              temperature: 0.7,
+            }
+          : {
+              // Direct API call (dev with Vite proxy)
+              model: ollamaModel,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.7,
+            }
+      ),
+    })
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '')
+      throw new Error(`Ollama request failed (${response.status}): ${details || response.statusText}`)
+    }
+
+    const data = await response.json()
+    const text = data?.choices?.[0]?.message?.content || data?.message?.content || data?.response
+
+    if (!text || typeof text !== 'string') {
+      throw new Error('Ollama response did not include text content')
+    }
+
+    return text
+  } catch (err) {
+    console.error('[Ollama] Error:', err.message)
+    throw err
   }
-
-  const response = await fetch(`${ollamaBaseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: ollamaModel,
-      messages: [
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-    }),
-  })
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => '')
-    throw new Error(`Ollama request failed (${response.status}): ${details || response.statusText}`)
-  }
-
-  const data = await response.json()
-  const text = data?.choices?.[0]?.message?.content || data?.message?.content || data?.response
-
-  if (!text || typeof text !== 'string') {
-    throw new Error('Ollama response did not include text content')
-  }
-
-  return text
 }
 
 export async function getDailyLesson(dayNumber) {

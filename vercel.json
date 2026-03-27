@@ -1,0 +1,19 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "OLLAMA_BASE_URL": "@ollama_base_url",
+    "OLLAMA_API_KEY": "@ollama_api_key"
+  },
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, s-maxage=0, stale-while-revalidate=60"
+        }
+      ]
+    }
+  ]
+}
